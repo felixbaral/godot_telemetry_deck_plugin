@@ -1,7 +1,13 @@
-[gd_scene load_steps=2 format=3 uid="uid://c0wpjs5036vll"]
+[gd_scene format=3 uid="uid://c0wpjs5036vll"]
 
 [ext_resource type="Script" uid="uid://cm0m2jn6sac7a" path="res://addons/telemetry_deck/TelemetryDeckAnalytics.gd" id="1_gvp57"]
 
-[node name="Analytics" type="Node2D"]
+[node name="Analytics" type="Node2D" unique_id=1475287561 node_paths=PackedStringArray("http", "_timer")]
 script = ExtResource("1_gvp57")
-appId = "8FF61E2D-CE1E-4B34-8D33-E7BCD4A5EC99"
+http = NodePath("HTTPRequest")
+_timer = NodePath("Timer")
+
+[node name="HTTPRequest" type="HTTPRequest" parent="." unique_id=976171693]
+
+[node name="Timer" type="Timer" parent="." unique_id=1086086418]
+wait_time = 10.0
