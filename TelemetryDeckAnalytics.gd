@@ -25,9 +25,9 @@ func _ready() -> void:
 	time_start_sec = Time.get_ticks_msec() / 1000
 	print("TelemetryDeck crash handler available: ", OS.is_debug_build() == false)
 	_load_buffer_from_disk()
-	sendSignal("application_start")
 	_parameters["TelemetryDeck.Device.platform"] = OS.get_name()
 	_parameters["platform"] = OS.get_name()
+	sendSignal("application_start")
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_CRASH:
