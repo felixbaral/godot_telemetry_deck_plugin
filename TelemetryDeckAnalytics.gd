@@ -131,10 +131,9 @@ func _http_request_completed(result, response_code, headers, body):
 #region persistence
 
 func _save_buffer_to_disk() -> void:
-	var thread := Thread.new()
-	thread.start(_write_buffer_thread.bind(_buffer))
+	_write_buffer(_buffer)
 
-func _write_buffer_thread(data: Array) -> void:
+func _write_buffer(data: Array) -> void:
 	var file := FileAccess.open(BUFFER_FILE, FileAccess.WRITE)
 	if file == null:
 		push_error("[TelemetryDeck] could not open buffer file for writing")
