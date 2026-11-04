@@ -1,12 +1,17 @@
+# https://telemetrydeck.com/docs/ingest/default-parameters/
+# https://telemetrydeck.com/docs/ingest/v2/
+# https://telemetrydeck.com/docs/ingest/v3/
+
 class_name TelemetryDeck
 extends Node
 
 @export var http: HTTPRequest
 @export var _timer: Timer
-var url = "https://nom.telemetrydeck.com/v2/"
+var url = "https://nom.telemetrydeck.com/v3/"
+# fill in your app id
 @export var appId: String= "xxx"
-# https://telemetrydeck.com/docs/ingest/default-parameters/
-# https://telemetrydeck.com/docs/ingest/v2/
+@export var your_namespace: String= "xxx"
+
 var time_start_sec = 0
 var time_session_sec = 0
 var _buffer: Array = []
@@ -47,7 +52,9 @@ func logError(error_id: String, error: String):
 		"TelemetryDeck.Error.message": error
 	})
 
+# name cannot contain special characters like äüö
 func setParameter(name: String, value: Variant):
+	assert(not name.is_empty(), "name cannot be empty")
 	_parameters[name] = value
 
 func _enricht_data(data: Dictionary) -> Dictionary:
@@ -64,13 +71,18 @@ func bufferSignal(dict: Dictionary):
 	print("buffering "+ dict["type"])
 
 func sendSignalWithDict(type: String, dict: Dictionary):
-	bufferSignal({
+	var s:Dictionary = {
 			"appID": appId,
 			"type": type,
 			"clientUser": "myClientUserHash",
-			"payload": _enricht_data(dict),
-			"isTestMode": _isTestMode
-		})
+			"isTestMode": _isTestMode,
+			# v3 requires ISO 8601 with timezone; set at creation so buffered signals keep their real time
+			"receivedAt": Time.get_datetime_string_from_system(true) + "Z"
+		}
+	s.merge(dict)
+	_enricht_data(s)
+	bufferSignal(s)
+	print("[TelemetryDeck] signal received:",s)
 	_trySend()
 
 func _trySend():
@@ -86,7 +98,7 @@ func _trySend():
 	_buffer = []
 	print(json)
 	_is_busy_sending = true
-	http.request(url, headers, HTTPClient.METHOD_POST, json)
+	http.request(url+your_namespace, headers, HTTPClient.METHOD_POST, json)
 
 func sendSignal(type: String):
 	sendSignalWithDict(type, {})
@@ -97,12 +109,24 @@ func sendSignalWithData(type: String, data: String):
 # Called when the HTTP request is completed.
 func _http_request_completed(result, response_code, headers, body):
 	_is_busy_sending = false
+
+	# error connecting to the server
 	if result != HTTPRequest.RESULT_SUCCESS:
-		push_error("error with analytics call — re-queuing batch to disk")
+		push_error("[TelemetryDeck] error with connection — re-queuing batch to disk %d" %result, body.get_string_from_utf8())
 		_buffer = _last_batch + _buffer
 		_save_buffer_to_disk()
+
+	# error code from server
+	elif response_code != 200:
+		push_error("[TelemetryDeck] error from server — re-queuing batch to disk %d" %response_code, body.get_string_from_utf8())
+		_buffer = _last_batch + _buffer
+		_save_buffer_to_disk()
+
+	else:
+		print("[TelemetryDeck] %d signals succesfully sent" % _last_batch.size())
+
 	_last_batch = []
-	print(body)
+
 
 #region persistence
 
@@ -113,15 +137,15 @@ func _save_buffer_to_disk() -> void:
 func _write_buffer_thread(data: Array) -> void:
 	var file := FileAccess.open(BUFFER_FILE, FileAccess.WRITE)
 	if file == null:
-		push_error("TelemetryDeck: could not open buffer file for writing")
+		push_error("[TelemetryDeck] could not open buffer file for writing")
 		return
 	file.store_string(JSON.stringify(data))
 	file.close()
-	print("TelemetryDeck: buffer saved to disk (%d signals)" % data.size())
+	print("[TelemetryDeck] buffer saved to disk (%d signals)" % data.size())
 
 func _load_buffer_from_disk() -> void:
 	if not FileAccess.file_exists(BUFFER_FILE):
-		print("TelemetryDeck: no buffer file")
+		print("[TelemetryDeck] no buffer file")
 		return
 	var thread := Thread.new()
 	thread.start(_read_buffer_thread)
@@ -129,14 +153,14 @@ func _load_buffer_from_disk() -> void:
 func _read_buffer_thread() -> void:
 	var file := FileAccess.open(BUFFER_FILE, FileAccess.READ)
 	if file == null:
-		print("TelemetryDeck: no stored signals found")
+		print("[TelemetryDeck] no stored signals found")
 		return
 	var text := file.get_as_text()
 	file.close()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(BUFFER_FILE))
 	var parsed = JSON.parse_string(text)
 	if parsed is Array and not parsed.is_empty():
-		print("TelemetryDeck: restored %d signals from disk" % parsed.size())
+		print("[TelemetryDeck] restored %d signals from disk" % parsed.size())
 		call_deferred("_prepend_restored_buffer", parsed)
 
 func _prepend_restored_buffer(data: Array) -> void:
